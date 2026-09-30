@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Pot of Study"
+description = "A responsive study planning workspace for students to organize subjects, tasks, notes, study sessions, and progress in one calm place."
+version = "1.0.0"
+id = "artifacts/pot-of-study"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21225
+
+[services.development]
+run = "pnpm --filter @workspace/pot-of-study run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pot-of-study", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/pot-of-study/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21225"
+BASE_PATH = "/"
