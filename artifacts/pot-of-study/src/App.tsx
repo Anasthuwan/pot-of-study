@@ -9,6 +9,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import {
+  AlertCircle,
   ArrowRight,
   ArrowUpRight,
   BarChart3,
@@ -29,7 +30,9 @@ import {
   Leaf,
   Library,
   LineChart,
+  Loader2,
   LockKeyhole,
+  LogOut,
   Mail,
   Menu,
   Moon,
@@ -56,14 +59,52 @@ import {
   useLocation,
   Router as WouterRouter,
 } from 'wouter';
+import { AuthProvider, useAuth, getUserInitials } from '@/contexts/auth-context';
 
 const queryClient = new QueryClient();
 
+function AuthLoadingScreen() {
+  return (
+    <div
+      className="app-noise flex min-h-[100dvh] flex-col items-center justify-center bg-background text-foreground"
+      data-testid="auth-loading-screen"
+    >
+      <div className="flex flex-col items-center gap-3 animate-rise">
+        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-[0_8px_20px_hsl(154_42%_31%_/_0.25)]">
+          <span className="relative block h-5 w-5 rounded-full border-2 border-current animate-pulse">
+            <span className="absolute -right-[3px] -top-[4px] h-2 w-2 rounded-full bg-accent" />
+          </span>
+        </span>
+        <p className="hand-title text-2xl font-semibold tracking-[-0.02em]">Pot of Study</p>
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Loader2 size={13} className="animate-spin text-primary" /> Setting up your space…
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function Home() {
+  const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
-  useEffect(() => setLocation('/dashboard'), [setLocation]);
+
+  useEffect(() => {
+    if (!loading) {
+      if (user) {
+        setLocation('/dashboard');
+      } else {
+        setLocation('/login');
+      }
+    }
+  }, [user, loading, setLocation]);
+
+  if (loading) {
+    return <AuthLoadingScreen />;
+  }
+
   return null;
 }
+
 
 type Task = {
   id: number;
@@ -140,7 +181,23 @@ function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () => void }
 }
 
 function Sidebar({ mobileOpen, onClose, dark, onToggle }: { mobileOpen: boolean; onClose: () => void; dark: boolean; onToggle: () => void }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      onClose();
+      setLocation('/login');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const displayName = user?.displayName || user?.email?.split('@')[0] || 'Maya Chen';
+  const displayEmail = user?.email || 'Year 12 student';
+  const initials = getUserInitials(user?.displayName, user?.email);
+
   return (
     <>
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`} data-testid="sidebar-navigation">
@@ -181,16 +238,37 @@ function Sidebar({ mobileOpen, onClose, dark, onToggle }: { mobileOpen: boolean;
             <p className="text-xs leading-5 text-muted-foreground">A clear desk makes room for a clear thought.</p>
           </div>
           <div className="flex items-center justify-between border-t border-border px-2 pt-4">
-            <div className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground">MC</span>
-              <div>
-                <p className="text-xs font-semibold">Maya Chen</p>
-                <p className="text-[11px] text-muted-foreground">Year 12 student</p>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground">
+                {initials}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold">{displayName}</p>
+                <p className="truncate text-[11px] text-muted-foreground">{displayEmail}</p>
               </div>
             </div>
-            <button type="button" onClick={onToggle} className="pot-focus rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Toggle theme" data-testid="button-sidebar-theme">
-              {dark ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={onToggle}
+                className="pot-focus rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Toggle theme"
+                title="Toggle theme"
+                data-testid="button-sidebar-theme"
+              >
+                {dark ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="pot-focus rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                aria-label="Sign out"
+                title="Sign out"
+                data-testid="button-sidebar-logout"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -200,8 +278,19 @@ function Sidebar({ mobileOpen, onClose, dark, onToggle }: { mobileOpen: boolean;
 }
 
 function Topbar({ onMenu, dark, onToggle }: { onMenu: () => void; dark: boolean; onToggle: () => void }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  const { logout } = useAuth();
   const current = navItems.find((item) => item.href === location)?.label ?? 'Overview';
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setLocation('/login');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
   return (
     <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-border bg-background/85 px-5 backdrop-blur-md sm:px-8 lg:px-10">
       <div className="flex items-center gap-3">
@@ -213,7 +302,7 @@ function Topbar({ onMenu, dark, onToggle }: { onMenu: () => void; dark: boolean;
           <p className="mt-0.5 text-sm font-semibold">{current}</p>
         </div>
       </div>
-      <div className="flex items-center gap-2 sm:gap-4">
+      <div className="flex items-center gap-2 sm:gap-3">
         <button type="button" className="pot-focus hidden rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground sm:block" aria-label="Search" data-testid="button-search">
           <Search size={18} />
         </button>
@@ -222,6 +311,17 @@ function Topbar({ onMenu, dark, onToggle }: { onMenu: () => void; dark: boolean;
           <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
         </button>
         <ThemeToggle dark={dark} onToggle={onToggle} />
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="pot-focus inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+          aria-label="Sign out"
+          title="Sign out"
+          data-testid="button-dashboard-logout"
+        >
+          <LogOut size={14} />
+          <span className="hidden sm:inline">Sign out</span>
+        </button>
       </div>
     </header>
   );
@@ -277,16 +377,18 @@ function StatCard({ label, value, detail, icon: Icon, accent = 'primary' }: { la
 }
 
 function DashboardPage() {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState(initialTasks);
   const todayTasks = tasks.filter((task) => task.tag === 'Today');
   const completedToday = todayTasks.filter((task) => task.completed).length;
   const toggleTask = (id: number) => setTasks((items) => items.map((task) => task.id === id ? { ...task, completed: !task.completed } : task));
+  const firstName = user?.displayName ? user.displayName.split(' ')[0] : 'Maya';
   return (
     <div>
       <div className="mb-9 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div className="animate-rise">
           <p className="mono-label mb-3 text-[10px] text-primary">Tuesday, 14 May 2024</p>
-          <h1 className="hand-title text-balance text-[clamp(2.4rem,5vw,4.2rem)] leading-[0.95]">Good afternoon, Maya.</h1>
+          <h1 className="hand-title text-balance text-[clamp(2.4rem,5vw,4.2rem)] leading-[0.95]">Good afternoon, {firstName}.</h1>
           <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">Your week has a little more shape today. Start with one clear thing, then let the rest follow.</p>
         </div>
         <Link href="/tasks" className="pot-focus inline-flex w-fit items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:border-primary hover:text-primary" data-testid="link-plan-session">
@@ -485,28 +587,532 @@ function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="app-noise grid min-h-[100dvh] bg-background lg:grid-cols-[0.9fr_1.1fr]">
       <div className="relative hidden overflow-hidden bg-primary p-10 text-primary-foreground lg:flex lg:flex-col lg:justify-between">
-        <div className="absolute -right-28 -top-24 h-72 w-72 rounded-full border-[30px] border-primary-foreground/10" /><div className="absolute -bottom-36 -left-20 h-96 w-96 rounded-full border-[45px] border-accent/20" />
-        <div className="relative"><Logo /><p className="mono-label mt-20 text-[10px] text-primary-foreground/60">A quieter way to study</p><h1 className="hand-title mt-6 max-w-md text-6xl leading-[0.95]">Make space for the work that matters.</h1><p className="mt-7 max-w-sm text-sm leading-6 text-primary-foreground/70">Pot of Study helps you turn scattered intentions into a steady, kind rhythm.</p></div>
-        <div className="relative flex items-center gap-3 text-xs text-primary-foreground/60"><ShieldCheck size={16} /> Your study space stays yours.</div>
+        <div className="absolute -right-28 -top-24 h-72 w-72 rounded-full border-[30px] border-primary-foreground/10" />
+        <div className="absolute -bottom-36 -left-20 h-96 w-96 rounded-full border-[45px] border-accent/20" />
+        <div className="relative">
+          <Logo />
+          <p className="mono-label mt-20 text-[10px] text-primary-foreground/60">A quieter way to study</p>
+          <h1 className="hand-title mt-6 max-w-md text-6xl leading-[0.95]">Make space for the work that matters.</h1>
+          <p className="mt-7 max-w-sm text-sm leading-6 text-primary-foreground/70">Pot of Study helps you turn scattered intentions into a steady, kind rhythm.</p>
+        </div>
+        <div className="relative flex items-center gap-3 text-xs text-primary-foreground/60">
+          <ShieldCheck size={16} /> Your study space stays yours.
+        </div>
       </div>
-      <div className="flex flex-col px-5 py-6 sm:px-10 lg:px-20 lg:py-10"><div className="flex items-center justify-between"><div className="lg:hidden"><Logo /></div><Link href="/" className="pot-focus ml-auto inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground" data-testid="link-back-home"><ArrowRight className="rotate-180" size={14} /> Back to home</Link></div><div className="mx-auto flex w-full max-w-[430px] flex-1 items-center py-14"><div className="w-full">{children}<div className="mt-8 flex items-center justify-center gap-2 text-[11px] text-muted-foreground"><LockKeyhole size={13} /> Demo mode · nothing is sent anywhere</div></div></div></div>
+      <div className="flex flex-col px-5 py-6 sm:px-10 lg:px-20 lg:py-10">
+        <div className="flex items-center justify-between">
+          <div className="lg:hidden"><Logo /></div>
+          <Link href="/" className="pot-focus ml-auto inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground" data-testid="link-back-home">
+            <ArrowRight className="rotate-180" size={14} /> Back to home
+          </Link>
+        </div>
+        <div className="mx-auto flex w-full max-w-[430px] flex-1 items-center py-14">
+          <div className="w-full">
+            {children}
+            <div className="mt-8 flex items-center justify-center gap-2 text-[11px] text-muted-foreground">
+              <LockKeyhole size={13} /> Secured with Firebase Authentication
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 function LoginPage() {
   const [, setLocation] = useLocation();
+  const { login, loginDemo, error, clearError } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  return <AuthLayout><div className="animate-rise"><p className="mono-label text-[10px] text-primary">Welcome back</p><h1 className="hand-title mt-4 text-5xl leading-none">Good to see you.</h1><p className="mt-4 text-sm leading-6 text-muted-foreground">Pick up where you left off. Your next small step is waiting.</p><form className="mt-9 space-y-5" onSubmit={(event) => { event.preventDefault(); setLocation('/dashboard'); }}><label className="block"><span className="mb-2 block text-xs font-semibold">Email address</span><div className="relative"><Mail size={16} className="absolute left-3 top-3.5 text-muted-foreground" /><input type="email" required placeholder="you@example.com" className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary" data-testid="input-login-email" /></div></label><label className="block"><span className="mb-2 block text-xs font-semibold">Password</span><div className="relative"><LockKeyhole size={16} className="absolute left-3 top-3.5 text-muted-foreground" /><input type={showPassword ? 'text' : 'password'} required placeholder="Enter your password" className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-10 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary" data-testid="input-login-password" /><button type="button" onClick={() => setShowPassword((value) => !value)} className="pot-focus absolute right-2 top-2 rounded-lg p-1.5 text-muted-foreground hover:bg-muted" aria-label={showPassword ? 'Hide password' : 'Show password'} data-testid="button-toggle-password">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label><div className="flex items-center justify-between text-xs"><label className="flex items-center gap-2 text-muted-foreground"><input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" data-testid="input-remember-me" /> Keep me signed in</label><button type="button" className="pot-focus font-semibold text-primary hover:underline" data-testid="button-forgot-password">Forgot password?</button></div><PrimaryButton type="submit" testId="button-submit-login">Sign in</PrimaryButton></form><p className="mt-8 text-center text-sm text-muted-foreground">New to Pot of Study? <Link href="/register" className="pot-focus font-semibold text-primary hover:underline" data-testid="link-register">Create an account</Link></p></div></AuthLayout>;
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const activeError = localError || error;
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLocalError(null);
+    clearError();
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setLocalError('Please enter your email address.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setLocalError('Please enter a valid email address.');
+      return;
+    }
+    if (!password) {
+      setLocalError('Please enter your password.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await login(cleanEmail, password);
+      setLocation('/dashboard');
+    } catch {
+      // Error message is set in AuthContext and displayed in activeError alert
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <AuthLayout>
+      <div className="animate-rise">
+        <p className="mono-label text-[10px] text-primary">Welcome back</p>
+        <h1 className="hand-title mt-4 text-5xl leading-none">Good to see you.</h1>
+        <p className="mt-4 text-sm leading-6 text-muted-foreground">Pick up where you left off. Your next small step is waiting.</p>
+
+        {activeError && (
+          <div
+            className="mt-6 flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-xs text-destructive animate-rise"
+            role="alert"
+            data-testid="alert-login-error"
+          >
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+            <div className="flex-1 font-medium leading-5">{activeError}</div>
+            <button
+              type="button"
+              onClick={() => {
+                setLocalError(null);
+                clearError();
+              }}
+              className="text-destructive/70 hover:text-destructive"
+              aria-label="Dismiss error"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        <form className="mt-7 space-y-5" onSubmit={handleSubmit} noValidate>
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold">Email address</span>
+            <div className="relative">
+              <Mail size={16} className="absolute left-3 top-3.5 text-muted-foreground" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (activeError) {
+                    setLocalError(null);
+                    clearError();
+                  }
+                }}
+                required
+                placeholder="you@example.com"
+                className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary"
+                data-testid="input-login-email"
+              />
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold">Password</span>
+            <div className="relative">
+              <LockKeyhole size={16} className="absolute left-3 top-3.5 text-muted-foreground" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (activeError) {
+                    setLocalError(null);
+                    clearError();
+                  }
+                }}
+                required
+                placeholder="Enter your password"
+                className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-10 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary"
+                data-testid="input-login-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                className="pot-focus absolute right-2 top-2 rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                data-testid="button-toggle-password"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </label>
+
+          <div className="flex items-center justify-between text-xs">
+            <label className="flex items-center gap-2 text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                defaultChecked
+                className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+                data-testid="input-remember-me"
+              />
+              Keep me signed in
+            </label>
+            <button
+              type="button"
+              className="pot-focus font-semibold text-primary hover:underline"
+              data-testid="button-forgot-password"
+              onClick={() => {
+                alert('To reset your password, please contact the workspace administrator or enter your registered email.');
+              }}
+            >
+              Forgot password?
+            </button>
+          </div>
+
+          <PrimaryButton
+            type="submit"
+            testId="button-submit-login"
+            icon={submitting ? Loader2 : ArrowRight}
+          >
+            {submitting ? 'Signing in…' : 'Sign in'}
+          </PrimaryButton>
+
+          <div className="relative my-5 flex items-center justify-center">
+            <span className="w-full border-t border-border" />
+            <span className="bg-card px-3 text-[11px] font-medium uppercase text-muted-foreground">Or</span>
+            <span className="w-full border-t border-border" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              loginDemo();
+              setLocation('/dashboard');
+            }}
+            className="pot-focus flex w-full items-center justify-center gap-2 rounded-xl border border-primary/25 bg-secondary/50 px-4 py-2.5 text-xs font-semibold text-primary transition-all hover:border-primary hover:bg-secondary active:scale-[0.99]"
+            data-testid="button-demo-login"
+          >
+            <Sparkles size={15} /> Continue with Demo Account (Maya Chen)
+          </button>
+        </form>
+
+        <p className="mt-8 text-center text-sm text-muted-foreground">
+          New to Pot of Study?{' '}
+          <Link href="/register" className="pot-focus font-semibold text-primary hover:underline" data-testid="link-register">
+            Create an account
+          </Link>
+        </p>
+      </div>
+    </AuthLayout>
+  );
 }
 
 function RegisterPage() {
   const [, setLocation] = useLocation();
-  return <AuthLayout><div className="animate-rise"><p className="mono-label text-[10px] text-primary">Start gently</p><h1 className="hand-title mt-4 text-5xl leading-none">Build your desk.</h1><p className="mt-4 text-sm leading-6 text-muted-foreground">A few details, then you can start turning the week into something you can hold.</p><form className="mt-9 space-y-5" onSubmit={(event) => { event.preventDefault(); setLocation('/dashboard'); }}><label className="block"><span className="mb-2 block text-xs font-semibold">Your name</span><div className="relative"><UserRound size={16} className="absolute left-3 top-3.5 text-muted-foreground" /><input required placeholder="What should we call you?" className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary" data-testid="input-register-name" /></div></label><label className="block"><span className="mb-2 block text-xs font-semibold">Email address</span><div className="relative"><Mail size={16} className="absolute left-3 top-3.5 text-muted-foreground" /><input type="email" required placeholder="you@example.com" className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary" data-testid="input-register-email" /></div></label><label className="block"><span className="mb-2 block text-xs font-semibold">Create a password</span><div className="relative"><LockKeyhole size={16} className="absolute left-3 top-3.5 text-muted-foreground" /><input type="password" required minLength={6} placeholder="At least 6 characters" className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary" data-testid="input-register-password" /></div></label><label className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><input type="checkbox" required className="mt-1 h-3.5 w-3.5 accent-[hsl(var(--primary))]" data-testid="input-agree-terms" /> I want a calm, personal place to plan my study week.</label><PrimaryButton type="submit" testId="button-submit-register">Create my space</PrimaryButton></form><p className="mt-8 text-center text-sm text-muted-foreground">Already have a space? <Link href="/login" className="pot-focus font-semibold text-primary hover:underline" data-testid="link-login">Sign in</Link></p></div></AuthLayout>;
+  const { register, loginDemo, error, clearError } = useAuth();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [agree, setAgree] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const activeError = localError || error;
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLocalError(null);
+    clearError();
+
+    const cleanName = name.trim();
+    const cleanEmail = email.trim();
+
+    if (!cleanName) {
+      setLocalError('Please enter your name.');
+      return;
+    }
+    if (!cleanEmail) {
+      setLocalError('Please enter your email address.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setLocalError('Please enter a valid email address.');
+      return;
+    }
+    if (!password) {
+      setLocalError('Please create a password.');
+      return;
+    }
+    if (password.length < 6) {
+      setLocalError('Password must be at least 6 characters.');
+      return;
+    }
+    if (!agree) {
+      setLocalError('Please accept the agreement to create your study space.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await register(cleanName, cleanEmail, password);
+      setLocation('/dashboard');
+    } catch {
+      // Error message is set in AuthContext and displayed in activeError alert
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <AuthLayout>
+      <div className="animate-rise">
+        <p className="mono-label text-[10px] text-primary">Start gently</p>
+        <h1 className="hand-title mt-4 text-5xl leading-none">Build your desk.</h1>
+        <p className="mt-4 text-sm leading-6 text-muted-foreground">A few details, then you can start turning the week into something you can hold.</p>
+
+        {activeError && (
+          <div
+            className="mt-6 flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-xs text-destructive animate-rise"
+            role="alert"
+            data-testid="alert-register-error"
+          >
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+            <div className="flex-1 font-medium leading-5">{activeError}</div>
+            <button
+              type="button"
+              onClick={() => {
+                setLocalError(null);
+                clearError();
+              }}
+              className="text-destructive/70 hover:text-destructive"
+              aria-label="Dismiss error"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        <form className="mt-7 space-y-5" onSubmit={handleSubmit} noValidate>
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold">Your name</span>
+            <div className="relative">
+              <UserRound size={16} className="absolute left-3 top-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (activeError) {
+                    setLocalError(null);
+                    clearError();
+                  }
+                }}
+                required
+                placeholder="What should we call you?"
+                className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary"
+                data-testid="input-register-name"
+              />
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold">Email address</span>
+            <div className="relative">
+              <Mail size={16} className="absolute left-3 top-3.5 text-muted-foreground" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (activeError) {
+                    setLocalError(null);
+                    clearError();
+                  }
+                }}
+                required
+                placeholder="you@example.com"
+                className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary"
+                data-testid="input-register-email"
+              />
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold">Create a password</span>
+            <div className="relative">
+              <LockKeyhole size={16} className="absolute left-3 top-3.5 text-muted-foreground" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (activeError) {
+                    setLocalError(null);
+                    clearError();
+                  }
+                }}
+                required
+                minLength={6}
+                placeholder="At least 6 characters"
+                className="pot-focus h-11 w-full rounded-xl border border-input bg-card pl-10 pr-10 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary"
+                data-testid="input-register-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                className="pot-focus absolute right-2 top-2 rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                data-testid="button-toggle-register-password"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </label>
+
+          <label className="flex items-start gap-2 text-xs leading-5 text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agree}
+              onChange={(e) => setAgree(e.target.checked)}
+              required
+              className="mt-1 h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+              data-testid="input-agree-terms"
+            />
+            <span>I want a calm, personal place to plan my study week.</span>
+          </label>
+
+          <PrimaryButton
+            type="submit"
+            testId="button-submit-register"
+            icon={submitting ? Loader2 : ArrowRight}
+          >
+            {submitting ? 'Creating your space…' : 'Create my space'}
+          </PrimaryButton>
+
+          <div className="relative my-5 flex items-center justify-center">
+            <span className="w-full border-t border-border" />
+            <span className="bg-card px-3 text-[11px] font-medium uppercase text-muted-foreground">Or</span>
+            <span className="w-full border-t border-border" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              loginDemo(name.trim() || 'New Student', email.trim() || 'student@potofstudy.app');
+              setLocation('/dashboard');
+            }}
+            className="pot-focus flex w-full items-center justify-center gap-2 rounded-xl border border-primary/25 bg-secondary/50 px-4 py-2.5 text-xs font-semibold text-primary transition-all hover:border-primary hover:bg-secondary active:scale-[0.99]"
+            data-testid="button-demo-register"
+          >
+            <Sparkles size={15} /> Continue with Demo Student Space
+          </button>
+        </form>
+
+        <p className="mt-8 text-center text-sm text-muted-foreground">
+          Already have a space?{' '}
+          <Link href="/login" className="pot-focus font-semibold text-primary hover:underline" data-testid="link-login">
+            Sign in
+          </Link>
+        </p>
+      </div>
+    </AuthLayout>
+  );
+}
+
+function ProtectedRoute({
+  children,
+  dark,
+  onToggle,
+}: {
+  children: ReactNode;
+  dark: boolean;
+  onToggle: () => void;
+}) {
+  const { user, loading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      setLocation('/login');
+    }
+  }, [user, loading, setLocation]);
+
+  if (loading) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  return <AppShell dark={dark} onToggle={onToggle}>{children}</AppShell>;
+}
+
+function PublicAuthRoute({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!loading && user) {
+      setLocation('/dashboard');
+    }
+  }, [user, loading, setLocation]);
+
+  if (loading) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (user) {
+    return null;
+  }
+
+  return <>{children}</>;
 }
 
 function RoutedPages({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
-  return <Switch><Route path="/" component={Home} /><Route path="/login" component={LoginPage} /><Route path="/register" component={RegisterPage} /><Route path="/dashboard"><AppShell dark={dark} onToggle={onToggle}><DashboardPage /></AppShell></Route><Route path="/subjects"><AppShell dark={dark} onToggle={onToggle}><SubjectsPage /></AppShell></Route><Route path="/tasks"><AppShell dark={dark} onToggle={onToggle}><TasksPage /></AppShell></Route><Route path="/progress"><AppShell dark={dark} onToggle={onToggle}><ProgressPage /></AppShell></Route><Route path="/notes"><AppShell dark={dark} onToggle={onToggle}><NotesPage /></AppShell></Route><Route path="/timetable"><AppShell dark={dark} onToggle={onToggle}><TimetablePage /></AppShell></Route><Route component={NotFound} /></Switch>;
+  return (
+    <Switch>
+      <Route path="/" component={Home} />
+      <Route path="/login">
+        <PublicAuthRoute>
+          <LoginPage />
+        </PublicAuthRoute>
+      </Route>
+      <Route path="/register">
+        <PublicAuthRoute>
+          <RegisterPage />
+        </PublicAuthRoute>
+      </Route>
+      <Route path="/dashboard">
+        <ProtectedRoute dark={dark} onToggle={onToggle}>
+          <DashboardPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/subjects">
+        <ProtectedRoute dark={dark} onToggle={onToggle}>
+          <SubjectsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/tasks">
+        <ProtectedRoute dark={dark} onToggle={onToggle}>
+          <TasksPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/progress">
+        <ProtectedRoute dark={dark} onToggle={onToggle}>
+          <ProgressPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/notes">
+        <ProtectedRoute dark={dark} onToggle={onToggle}>
+          <NotesPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/timetable">
+        <ProtectedRoute dark={dark} onToggle={onToggle}>
+          <TimetablePage />
+        </ProtectedRoute>
+      </Route>
+      <Route component={NotFound} />
+    </Switch>
+  );
 }
 
 function Router() {
@@ -541,10 +1147,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
+        <AuthProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
